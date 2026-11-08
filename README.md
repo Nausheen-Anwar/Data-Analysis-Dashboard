@@ -1,7 +1,5 @@
 # Data-Analysis-Dashboard
 
-# Data Analysis Dashboard 
-
 A Streamlit dashboard for loading data, selecting columns, and viewing data preparation, visualization, and statistical analysis on one page.
 
 ## Run the application
