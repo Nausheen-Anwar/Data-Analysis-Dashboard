@@ -13,7 +13,7 @@ from utils.analysis import (
 )
 from utils.auth import login_screen, logout
 from utils.plots import (
-    CHARTS, MIME, NEEDS_ONE, NEEDS_XY, density_figure, fig_bytes, make_chart
+    CHARTS, MIME, NEEDS_ONE, NEEDS_XY, density_figure, fig_bytes, make_chart, make_interactive_chart, interactive_density_figure
 )
 from utils.report import build_report
 from utils.theme import inject_css
@@ -71,7 +71,6 @@ def k(name):
 
 
 def remove_uploads(names):
-    """Forget uploaded files. If the loaded table came from one of them, clear it too."""
     for n in names:
         st.session_state.uploads.pop(n, None)
     if st.session_state.data_name in names:
@@ -815,7 +814,7 @@ with st.container(key="section_six", border=True):
                     st.code("import pygal\nchart = pygal.Bar()\nchart.add('Series', values)\nchart.render_to_file('chart.svg')", language="python")
                 else:
                     from bokeh.plotting import figure
-                    from bokeh.models import ColumnDataSource
+                    from bokeh.models import ColumnDataSource, HoverTool
                     from bokeh.palettes import Category10
                     from bokeh.transform import cumsum
                     from math import pi
@@ -831,6 +830,7 @@ with st.container(key="section_six", border=True):
                     elif plot_type == "Violin plot": p.line(np.linspace(min(xvals),max(xvals),len(xvals)),sorted(xvals),line_width=2)
                     elif plot_type in ("Hexbin plot","2D histogram") and yvals is not None: p.scatter(x=xvals,y=yvals,size=8,alpha=.5)
                     else: p.line(xx,yy,line_width=2)
+                    p.add_tools(HoverTool(tooltips=[("X value", "$x"), ("Y value", "$y")]))
                     st.bokeh_chart(p,use_container_width=True)
                     st.code(f"from bokeh.plotting import figure, show\np = figure(title={plot_type!r})\n# values are taken from your selected data\np.line(range(len(data)), data[{xcol!r}])\nshow(p)",language="python")
             except Exception as e:
@@ -918,7 +918,12 @@ with st.container(border=True, key="ust_section_7"):
                     title=graph_title, xlim=(x_min, x_max), ylim=(y_min, y_max),
                     grid=grid, palette=palette
                 )
-                st.pyplot(fig)
+                interactive_fig = make_interactive_chart(
+                    sel, kind, x=x, ys=ys, col=col, heat_cols=heat,
+                    title=graph_title, xlim=(x_min, x_max), ylim=(y_min, y_max)
+                )
+                st.plotly_chart(interactive_fig, use_container_width=True,
+                                config={"displaylogo": False, "scrollZoom": True})
                 base_name = (graph_title.strip() or kind).replace(" ", "_")
                 d = st.columns(3)
                 for c, fmt in zip(d, ("png", "pdf", "svg")):
@@ -1047,7 +1052,11 @@ with st.container(border=True, key="ust_section_11"):
                 fig = density_figure(
                     values, x_g, normal, kde, label, method, mu, sigma, ptitle
                 )
-                st.pyplot(fig)
+                interactive_density = interactive_density_figure(
+                    x_g, normal, kde, label, method, mu, sigma, ptitle
+                )
+                st.plotly_chart(interactive_density, use_container_width=True,
+                                config={"displaylogo": False, "scrollZoom": True})
 
                 base_name = (
                     ptitle.strip() or f"probability_density_{label}"
