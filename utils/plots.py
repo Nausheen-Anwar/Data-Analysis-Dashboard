@@ -190,3 +190,92 @@ def density_figure(values, x, normal, kde, column, method, mu, sigma, title=""):
         ax.spines[spine].set_visible(False)
     fig.tight_layout()
     return fig
+
+
+def make_interactive_chart(df, kind, x=None, ys=None, col=None, heat_cols=None,
+                           title="", xlim=(None, None), ylim=(None, None)):
+    """Create an interactive Plotly version of a dashboard chart with hover values."""
+    import plotly.express as px
+
+    ys = ys or []
+    data = df.copy()
+    if kind in NEEDS_XY:
+        x_cols = x if isinstance(x, (list, tuple)) else [x]
+        if not x_cols or not ys:
+            raise ValueError("Choose an X-axis column and at least one numeric Y-axis column.")
+        for y in ys:
+            data[y] = pd.to_numeric(data[y], errors="coerce")
+        if kind == "Scatter plot":
+            frames = []
+            for xc in x_cols:
+                for y in ys:
+                    part = data[[xc, y]].dropna().copy()
+                    part["Series"] = f"{y} vs {xc}"
+                    part["X value"] = part[xc]
+                    part["Y value"] = part[y]
+                    frames.append(part)
+            if not frames:
+                raise ValueError("The selected columns do not contain any plottable values.")
+            combined = pd.concat(frames, ignore_index=True)
+            fig = px.scatter(combined, x="X value", y="Y value", color="Series",
+                             hover_data={"X value": True, "Y value": True, "Series": True})
+        else:
+            if len(x_cols) != 1:
+                raise ValueError(f"{kind} requires exactly one X-axis column. Choose one X column.")
+            xc = x_cols[0]
+            data = data.dropna(subset=[xc, *ys], how="all")
+            if data.empty:
+                raise ValueError("The selected columns do not contain any plottable values.")
+            if kind == "Line plot":
+                fig = px.line(data, x=xc, y=ys, markers=True)
+            elif kind == "Bar chart":
+                fig = px.bar(data, x=xc, y=ys, barmode="group")
+            else:
+                fig = px.area(data, x=xc, y=ys)
+    elif kind == "Histogram":
+        fig = px.histogram(data, x=col, marginal="rug", hover_data=[col])
+    elif kind == "Box plot":
+        fig = px.box(data, y=col, points="all", hover_data=[col])
+    elif kind == "Violin plot":
+        fig = px.violin(data, y=col, box=True, points="all", hover_data=[col])
+    elif kind == "Density plot":
+        fig = px.histogram(data, x=col, histnorm="probability density", marginal="rug")
+    elif kind == "Pie chart":
+        counts = data[col].astype("string").fillna("Missing").value_counts().head(10).rename_axis(col).reset_index(name="Count")
+        fig = px.pie(counts, names=col, values="Count", hole=0.25)
+    elif kind == "Count plot":
+        counts = data[col].astype("string").fillna("Missing").value_counts().head(30).rename_axis(col).reset_index(name="Count")
+        fig = px.bar(counts, x=col, y="Count")
+    elif kind == "Heatmap (correlation)":
+        if not heat_cols or len(heat_cols) < 2:
+            raise ValueError("Choose at least two numeric columns for the correlation heatmap.")
+        corr = data[heat_cols].apply(pd.to_numeric, errors="coerce").corr()
+        fig = px.imshow(corr, text_auto=".2f", zmin=-1, zmax=1, color_continuous_scale="Teal")
+    else:
+        raise ValueError("Unknown chart type.")
+
+    fig.update_layout(title=title.strip() or kind, hovermode="closest",
+                      margin=dict(l=20, r=20, t=55, b=30))
+    if xlim[0] is not None or xlim[1] is not None:
+        fig.update_xaxes(range=[xlim[0], xlim[1]])
+    if ylim[0] is not None or ylim[1] is not None:
+        fig.update_yaxes(range=[ylim[0], ylim[1]])
+    fig.update_traces(hovertemplate=None, selector=dict(type="scatter"))
+    return fig
+
+
+def interactive_density_figure(x, normal, kde, column, method, mu, sigma, title=""):
+    import plotly.graph_objects as go
+
+    fig = go.Figure()
+    if method in ("Kernel density estimate", "Both") and np.isfinite(kde).any():
+        fig.add_trace(go.Scatter(x=x, y=kde, mode="lines", name="Kernel density estimate",
+                                 hovertemplate=f"{column}: %{{x:.5g}}<br>Density: %{{y:.5g}}<extra>KDE</extra>"))
+    if method in ("Normal distribution PDF", "Both") and np.isfinite(normal).any():
+        fig.add_trace(go.Scatter(x=x, y=normal, mode="lines", name=f"Normal (μ={mu:.3g}, σ={sigma:.3g})",
+                                 line=dict(dash="dash"),
+                                 hovertemplate=f"{column}: %{{x:.5g}}<br>Density: %{{y:.5g}}<extra>Normal PDF</extra>"))
+    fig.update_layout(title=title.strip() or f"Probability density: {column}",
+                      xaxis_title=column, yaxis_title="Probability density",
+                      hovermode="x unified", margin=dict(l=20, r=20, t=55, b=30))
+    return fig
